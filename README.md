@@ -72,4 +72,8 @@ Ad Hoc署名では、アプリ更新後に画面収録の再許可が必要に�
 ./script/build_release.sh 0.1.0 1
 ```
 
-`dist/GyazoCapture-0.1.0.dmg` とSHA-256チェックサムを作成します。`v0.1.0` のようなタグをpushすると、GitHub Actionsが同じ成果物をGitHub Releasesへ公開します。
+`dist/GyazoCapture-0.1.0.dmg` とSHA-256チェックサムを作成します。
+
+GitHubのActions画面から「Release」を選び、「Run workflow」でバージョンを入力すると、Ad Hoc署名済みDMGとSHA-256チェックサムをダウンロード可能なArtifactsとして作成できます。この手動実行ではGitHub Releaseは作成しません。
+
+`v0.1.0` のようなタグをpushした場合は、同じ成果物をArtifactsへ保存したうえでGitHub Releasesにも公開します。

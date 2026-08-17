@@ -1,6 +1,12 @@
 name: Release
 
 on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "DMG version (for example: 0.1.0)"
+        required: true
+        default: "0.1.0"
   push:
     tags: ["v*"]
 
@@ -11,12 +17,31 @@ jobs:
   release:
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Build Ad Hoc signed DMG
+        id: build
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="${{ inputs.version }}"
+          fi
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid version: $VERSION" >&2
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           ./script/build_release.sh "$VERSION" "$GITHUB_RUN_NUMBER"
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: GyazoCapture-${{ steps.build.outputs.version }}
+          path: |
+            dist/GyazoCapture-${{ steps.build.outputs.version }}.dmg
+            dist/GyazoCapture-${{ steps.build.outputs.version }}.dmg.sha256
+          if-no-files-found: error
       - name: Publish GitHub Release
+        if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
