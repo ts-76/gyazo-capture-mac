@@ -13,6 +13,7 @@ enum EditorTool: String, CaseIterable, Identifiable {
     case redaction
     case blur
     case mosaic
+    case magnifier
 
     var id: String { rawValue }
 
@@ -29,6 +30,7 @@ enum EditorTool: String, CaseIterable, Identifiable {
         case .redaction: return "墨消し"
         case .blur: return "ブラー"
         case .mosaic: return "モザイク"
+        case .magnifier: return "ルーペ"
         }
     }
 
@@ -45,6 +47,7 @@ enum EditorTool: String, CaseIterable, Identifiable {
         case .redaction: return "paintbrush.fill"
         case .blur: return "drop.fill"
         case .mosaic: return "square.grid.3x3.fill"
+        case .magnifier: return "magnifyingglass"
         }
     }
 
@@ -61,6 +64,7 @@ enum EditorTool: String, CaseIterable, Identifiable {
         case .redaction: return .redaction
         case .blur: return .blur
         case .mosaic: return .mosaic
+        case .magnifier: return .magnifier
         }
     }
 }
@@ -75,6 +79,7 @@ enum AnnotationKind: String, Equatable {
     case redaction
     case blur
     case mosaic
+    case magnifier
 
     var isMask: Bool {
         self == .blur || self == .mosaic
@@ -93,6 +98,8 @@ struct AnnotationItem: Identifiable, Equatable {
     var endUnitPoint: CGPoint
     var fontSize: CGFloat
     var effectStrength: CGFloat
+    var magnification: CGFloat
+    var magnifierDestinationOffset: CGSize
 
     init(
         id: UUID = UUID(),
@@ -105,7 +112,9 @@ struct AnnotationItem: Identifiable, Equatable {
         startUnitPoint: CGPoint = .zero,
         endUnitPoint: CGPoint = CGPoint(x: 1, y: 0),
         fontSize: CGFloat = 24,
-        effectStrength: CGFloat = 16
+        effectStrength: CGFloat = 16,
+        magnification: CGFloat = 2,
+        magnifierDestinationOffset: CGSize = .zero
     ) {
         self.id = id
         self.kind = kind
@@ -118,6 +127,8 @@ struct AnnotationItem: Identifiable, Equatable {
         self.endUnitPoint = endUnitPoint
         self.fontSize = fontSize
         self.effectStrength = effectStrength
+        self.magnification = magnification
+        self.magnifierDestinationOffset = magnifierDestinationOffset
     }
 }
 

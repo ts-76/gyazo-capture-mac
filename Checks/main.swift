@@ -44,6 +44,63 @@ func testImage(width: CGFloat, height: CGFloat, color: NSColor = .white) -> NSIm
     return image
 }
 
+func horizontalBandsImage(width: Int, height: Int) -> NSImage {
+    let representation = NSBitmapImageRep(
+        bitmapDataPlanes: nil,
+        pixelsWide: width,
+        pixelsHigh: height,
+        bitsPerSample: 8,
+        samplesPerPixel: 4,
+        hasAlpha: true,
+        isPlanar: false,
+        colorSpaceName: .deviceRGB,
+        bytesPerRow: width * 4,
+        bitsPerPixel: 32
+    )!
+    let red = NSColor(deviceRed: 1, green: 0, blue: 0, alpha: 1)
+    let blue = NSColor(deviceRed: 0, green: 0, blue: 1, alpha: 1)
+    for y in 0..<height {
+        for x in 0..<width {
+            representation.setColor(y < height / 2 ? red : blue, atX: x, y: y)
+        }
+    }
+    let image = NSImage(size: NSSize(width: width, height: height))
+    image.addRepresentation(representation)
+    return image
+}
+
+func retinaHorizontalBandsImage(width: Int, height: Int, scale: CGFloat = 2) -> NSImage {
+    let image = horizontalBandsImage(width: width, height: height)
+    let retinaImage = NSImage(
+        size: NSSize(
+            width: CGFloat(width) / scale,
+            height: CGFloat(height) / scale
+        )
+    )
+    for representation in image.representations {
+        retinaImage.addRepresentation(representation)
+    }
+    return retinaImage
+}
+
+func expectColor(
+    _ actual: NSColor?,
+    matches expected: NSColor,
+    message: String,
+    tolerance: CGFloat = 0.25
+) throws {
+    guard let actual = actual?.usingColorSpace(.deviceRGB),
+          let expected = expected.usingColorSpace(.deviceRGB) else {
+        throw CheckFailure.failed("\(message): RGBへ変換できません")
+    }
+    try expect(
+        abs(actual.redComponent - expected.redComponent) <= tolerance
+            && abs(actual.greenComponent - expected.greenComponent) <= tolerance
+            && abs(actual.blueComponent - expected.blueComponent) <= tolerance,
+        "\(message) (actual: \(actual.redComponent), \(actual.greenComponent), \(actual.blueComponent))"
+    )
+}
+
 @MainActor
 func makeEditorModel(image: NSImage, fileName: String) throws -> EditorModel {
     let settings = SettingsStore(loadKeychain: false)
@@ -129,7 +186,9 @@ func runChecks() throws {
     try expect(EditorTool.highlight.annotationKind == .highlight, "ハイライトツールを注釈種別へ変換できません")
     try expect(EditorTool.ellipse.annotationKind == .ellipse, "楕円ツールを注釈種別へ変換できません")
     try expect(EditorTool.redaction.annotationKind == .redaction, "墨消しツールを注釈種別へ変換できません")
+    try expect(EditorTool.magnifier.annotationKind == .magnifier, "ルーペツールを注釈種別へ変換できません")
     try expect(AnnotationKind.blur.isMask && AnnotationKind.mosaic.isMask, "マスク種別の判定が不正です")
+    try expect(!AnnotationKind.magnifier.isMask, "ルーペをマスク種別として扱っています")
 
     let encoded = FormURLEncoder.encode(["state": "a b", "code": "x+y"])
     try expect(String(data: encoded ?? Data(), encoding: .utf8) == "code=x+y&state=a%20b", "フォームエンコードが不正です")
@@ -147,6 +206,14 @@ func runChecks() throws {
     try expect(multipartText.contains("name=\"desc\""), "multipartに説明フィールドがありません")
     try expect(multipartText.contains("filename=\"capture.png\""), "multipartにファイル名がありません")
     try expect(multipart.range(of: pngHeader) != nil, "multipartにPNGデータがありません")
+    try expect(
+        ImageExportService.normalizedPNGFileName("  作業メモ  ") == "作業メモ.png",
+        "保存名へPNG拡張子を補完できません"
+    )
+    try expect(
+        ImageExportService.normalizedPNGFileName("folder/capture.PNG") == "folder-capture.png",
+        "保存名の危険な文字を除去できません"
+    )
 
     let sourceFrame = CGRect(x: 40, y: 30, width: 120, height: 60)
     let translatedFrame = AnnotationGeometry.translatedFrame(
@@ -179,6 +246,71 @@ func runChecks() throws {
     }
     try expect(representation.pixelsWide == 120, "合成後の画像幅が変化しました")
     try expect(representation.pixelsHigh == 80, "合成後の画像高さが変化しました")
+
+    let bands = horizontalBandsImage(width: 12, height: 10)
+    let bandsOutput = try ImageCompositor.pngData(baseImage: bands, annotations: [])
+    guard let bandsRepresentation = NSBitmapImageRep(data: bandsOutput) else {
+        throw CheckFailure.failed("上下判定用のPNGを読み取れません")
+    }
+    try expectColor(
+        bandsRepresentation.colorAt(x: 6, y: 1),
+        matches: NSColor(deviceRed: 1, green: 0, blue: 0, alpha: 1),
+        message: "PNG出力の上側が反転しています"
+    )
+    try expectColor(
+        bandsRepresentation.colorAt(x: 6, y: 8),
+        matches: NSColor(deviceRed: 0, green: 0, blue: 1, alpha: 1),
+        message: "PNG出力の下側が反転しています"
+    )
+
+    let topCrop = try ImageTransformService.croppedImage(
+        bands,
+        to: CGRect(x: 0, y: 0, width: 12, height: 5)
+    )
+    guard let topCropData = topCrop.tiffRepresentation,
+          let topCropRepresentation = NSBitmapImageRep(data: topCropData) else {
+        throw CheckFailure.failed("クロップ後の画像を読み取れません")
+    }
+    try expectColor(
+        topCropRepresentation.colorAt(x: 6, y: 1),
+        matches: NSColor(deviceRed: 1, green: 0, blue: 0, alpha: 1),
+        message: "クロップが上下反対の領域を切り出しています"
+    )
+
+    let magnifier = AnnotationItem(
+        kind: .magnifier,
+        frame: CGRect(x: 5, y: 5, width: 20, height: 20),
+        colorHex: "#007AFF",
+        lineWidth: 3,
+        magnification: 2,
+        magnifierDestinationOffset: CGSize(width: 75, height: 45)
+    )
+    try expect(
+        MagnifierGeometry.destinationFrame(for: magnifier) == CGRect(x: 70, y: 40, width: 40, height: 40),
+        "ルーペの拡大円座標が不正です"
+    )
+    let magnifierBands = horizontalBandsImage(width: 120, height: 80)
+    let magnifierOutput = try ImageCompositor.pngData(baseImage: magnifierBands, annotations: [magnifier])
+    guard let magnifierRepresentation = NSBitmapImageRep(data: magnifierOutput) else {
+        throw CheckFailure.failed("ルーペ描画後のPNGを読み取れません")
+    }
+    try expectColor(
+        magnifierRepresentation.colorAt(x: 90, y: 60),
+        matches: NSColor(deviceRed: 1, green: 0, blue: 0, alpha: 1),
+        message: "拡大円へ元領域を描画できません"
+    )
+    let retinaMagnifierOutput = try ImageCompositor.pngData(
+        baseImage: retinaHorizontalBandsImage(width: 120, height: 80),
+        annotations: [magnifier]
+    )
+    guard let retinaMagnifierRepresentation = NSBitmapImageRep(data: retinaMagnifierOutput) else {
+        throw CheckFailure.failed("Retina画像のルーペ描画後PNGを読み取れません")
+    }
+    try expectColor(
+        retinaMagnifierRepresentation.colorAt(x: 90, y: 60),
+        matches: NSColor(deviceRed: 1, green: 0, blue: 0, alpha: 1),
+        message: "Retina画像の拡大円へ元領域を描画できません"
+    )
 
     let maskedOutput = try ImageCompositor.pngData(
         baseImage: image,
@@ -387,6 +519,64 @@ func runChecks() throws {
     try expect(cropModel.annotations.first?.frame == CGRect(x: 10, y: 10, width: 50, height: 40), "クロップ後の注釈位置が不正です")
     cropModel.undo()
     try expect(cropModel.imagePixelSize == CGSize(width: 120, height: 80), "クロップのUndoで画像サイズを復元できません")
+
+    let maskCropModel = try makeEditorModel(
+        image: testImage(width: 120, height: 80),
+        fileName: "mask-crop"
+    )
+    maskCropModel.addAnnotation(
+        kind: .blur,
+        frame: CGRect(x: 10, y: 5, width: 60, height: 50)
+    )
+    maskCropModel.applyCrop(to: CGRect(x: 30, y: 20, width: 70, height: 50))
+    try expect(
+        maskCropModel.annotations.first?.frame == CGRect(x: 0, y: 0, width: 40, height: 35),
+        "クロップ後のマスク範囲が交差部分へ切り詰められていません"
+    )
+
+    let magnifierModel = try makeEditorModel(
+        image: testImage(width: 640, height: 480),
+        fileName: "magnifier"
+    )
+    magnifierModel.addAnnotation(
+        kind: .magnifier,
+        frame: CGRect(x: 80, y: 60, width: 100, height: 70)
+    )
+    guard let storedMagnifier = magnifierModel.annotations.first else {
+        throw CheckFailure.failed("作成したルーペ注釈を取得できません")
+    }
+    try expect(storedMagnifier.frame.width == storedMagnifier.frame.height, "ルーペの元領域が円形ではありません")
+    try expect(
+        CGRect(origin: .zero, size: magnifierModel.imagePixelSize)
+            .contains(MagnifierGeometry.destinationFrame(for: storedMagnifier)),
+        "ルーペの拡大円が初期状態で画像外にあります"
+    )
+    let destinationBeforeMovingSource = MagnifierGeometry.destinationFrame(for: storedMagnifier)
+    magnifierModel.setFrame(
+        storedMagnifier.frame.offsetBy(dx: 24, dy: 18),
+        for: storedMagnifier.id
+    )
+    guard let movedMagnifier = magnifierModel.annotations.first else {
+        throw CheckFailure.failed("移動後のルーペ注釈を取得できません")
+    }
+    try expect(
+        movedMagnifier.frame == storedMagnifier.frame.offsetBy(dx: 24, dy: 18),
+        "ルーペの起点を移動できません"
+    )
+    try expect(
+        MagnifierGeometry.destinationFrame(for: movedMagnifier) == destinationBeforeMovingSource,
+        "ルーペの起点移動で拡大先まで移動しています"
+    )
+    magnifierModel.applyMagnification(2.5)
+    try expect(
+        magnifierModel.annotations.first?.magnification == 2.5,
+        "ルーペの倍率を変更できません"
+    )
+    try expect(
+        MagnifierGeometry.rotatedOffset(CGSize(width: 100, height: 40), clockwise: true)
+            == CGSize(width: -40, height: 100),
+        "画像回転時のルーペ移動量が不正です"
+    )
 
 }
 

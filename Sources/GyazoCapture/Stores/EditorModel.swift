@@ -13,6 +13,8 @@ final class EditorModel: ObservableObject {
     @Published var currentFontSize: CGFloat = 24
     @Published var currentFillOpacity: CGFloat = 0.35
     @Published var currentMaskStrength: CGFloat = 16
+    @Published var currentMagnification: CGFloat = 2
+    @Published var fileName: String
     @Published var descriptionText = ""
     @Published var collectionID = ""
     @Published var accessPolicy: GyazoAccessPolicy
@@ -39,6 +41,7 @@ final class EditorModel: ObservableObject {
         self.sourceURL = sourceURL
         self.baseImage = image
         self.imagePixelSize = try ImageCompositor.pixelSize(of: image)
+        self.fileName = ImageExportService.defaultPNGFileName()
         self.collectionID = settings.defaultCollectionID
         self.accessPolicy = settings.defaultAccessPolicy
     }
@@ -75,7 +78,9 @@ final class EditorModel: ObservableObject {
 
     func addAnnotation(kind: AnnotationKind, frame: CGRect, start: CGPoint? = nil, end: CGPoint? = nil) {
         checkpoint()
-        let normalized = clamped(frame: frame)
+        let normalized = kind == .magnifier
+            ? MagnifierGeometry.circularSourceFrame(frame, within: imagePixelSize)
+            : clamped(frame: frame)
         let sourceStart = start ?? CGPoint(
             x: normalized.midX,
             y: normalized.midY
@@ -93,6 +98,13 @@ final class EditorModel: ObservableObject {
 
         let colorHex = kind == .redaction ? "#000000" : currentColorHex
         let fillOpacity = kind == .redaction ? 1 : (kind == .highlight ? currentFillOpacity : 1)
+        let destinationOffset = kind == .magnifier
+            ? MagnifierGeometry.defaultDestinationOffset(
+                sourceFrame: normalized,
+                magnification: currentMagnification,
+                imageSize: imagePixelSize
+            )
+            : .zero
         let item = AnnotationItem(
             kind: kind,
             frame: normalized,
@@ -103,7 +115,9 @@ final class EditorModel: ObservableObject {
             startUnitPoint: startUnitPoint,
             endUnitPoint: endUnitPoint,
             fontSize: currentFontSize,
-            effectStrength: currentMaskStrength
+            effectStrength: currentMaskStrength,
+            magnification: currentMagnification,
+            magnifierDestinationOffset: destinationOffset
         )
         annotations.append(item)
         selectedID = item.id
@@ -113,7 +127,39 @@ final class EditorModel: ObservableObject {
 
     func setFrame(_ frame: CGRect, for id: UUID) {
         guard let index = annotations.firstIndex(where: { $0.id == id }) else { return }
-        annotations[index].frame = clamped(frame: frame)
+        if annotations[index].kind == .magnifier {
+            let destinationFrame = MagnifierGeometry.destinationFrame(
+                for: annotations[index]
+            )
+            let destinationCenter = CGPoint(
+                x: destinationFrame.midX,
+                y: destinationFrame.midY
+            )
+            let sourceFrame = MagnifierGeometry.circularSourceFrame(frame, within: imagePixelSize)
+            annotations[index].frame = sourceFrame
+            annotations[index].magnifierDestinationOffset = MagnifierGeometry.clampedDestinationOffset(
+                CGSize(
+                    width: destinationCenter.x - sourceFrame.midX,
+                    height: destinationCenter.y - sourceFrame.midY
+                ),
+                sourceFrame: sourceFrame,
+                magnification: annotations[index].magnification,
+                imageSize: imagePixelSize
+            )
+        } else {
+            annotations[index].frame = clamped(frame: frame)
+        }
+    }
+
+    func setMagnifierDestinationOffset(_ offset: CGSize, for id: UUID) {
+        guard let index = annotations.firstIndex(where: { $0.id == id }),
+              annotations[index].kind == .magnifier else { return }
+        annotations[index].magnifierDestinationOffset = MagnifierGeometry.clampedDestinationOffset(
+            offset,
+            sourceFrame: annotations[index].frame,
+            magnification: annotations[index].magnification,
+            imageSize: imagePixelSize
+        )
     }
 
     func setText(_ text: String, for id: UUID) {
@@ -131,6 +177,7 @@ final class EditorModel: ObservableObject {
             currentFillOpacity = annotation.fillOpacity
             currentFontSize = annotation.fontSize
             currentMaskStrength = annotation.effectStrength
+            currentMagnification = annotation.magnification
         }
     }
 
@@ -184,6 +231,21 @@ final class EditorModel: ObservableObject {
         annotations[index].effectStrength = strength
     }
 
+    func applyMagnification(_ magnification: CGFloat) {
+        currentMagnification = magnification
+        guard let selectedID,
+              let index = annotations.firstIndex(where: { $0.id == selectedID }),
+              annotations[index].kind == .magnifier else { return }
+        checkpoint()
+        annotations[index].magnification = magnification
+        annotations[index].magnifierDestinationOffset = MagnifierGeometry.clampedDestinationOffset(
+            annotations[index].magnifierDestinationOffset,
+            sourceFrame: annotations[index].frame,
+            magnification: magnification,
+            imageSize: imagePixelSize
+        )
+    }
+
     func deleteSelected() {
         guard let selectedID,
               let index = annotations.firstIndex(where: { $0.id == selectedID }) else { return }
@@ -203,12 +265,31 @@ final class EditorModel: ObservableObject {
 
         checkpoint()
         replaceBaseImage(cropped)
-        annotations = annotations.compactMap {
-            guard let updated = AnnotationFrameTransformer.frameAfterCrop($0.frame, cropRect: clamped) else {
+        annotations = annotations.compactMap { annotation in
+            let updated = (annotation.kind.isMask || annotation.kind == .magnifier)
+                ? AnnotationFrameTransformer.clippedFrameAfterCrop(annotation.frame, cropRect: clamped)
+                : AnnotationFrameTransformer.frameAfterCrop(annotation.frame, cropRect: clamped)
+            guard let updated else {
                 return nil
             }
-            var next = $0
+            var next = annotation
             next.frame = updated
+            if annotation.kind == .magnifier {
+                let destinationCenter = CGPoint(
+                    x: annotation.frame.midX + annotation.magnifierDestinationOffset.width - clamped.minX,
+                    y: annotation.frame.midY + annotation.magnifierDestinationOffset.height - clamped.minY
+                )
+                let translatedOffset = CGSize(
+                    width: destinationCenter.x - updated.midX,
+                    height: destinationCenter.y - updated.midY
+                )
+                next.magnifierDestinationOffset = MagnifierGeometry.clampedDestinationOffset(
+                    translatedOffset,
+                    sourceFrame: updated,
+                    magnification: next.magnification,
+                    imageSize: imagePixelSize
+                )
+            }
             return next
         }
         selectedID = nil
@@ -253,6 +334,11 @@ final class EditorModel: ObservableObject {
                 )
                 next.endUnitPoint = AnnotationFrameTransformer.rotateUnitPoint(
                     annotation.endUnitPoint,
+                    clockwise: clockwise
+                )
+            } else if annotation.kind == .magnifier {
+                next.magnifierDestinationOffset = MagnifierGeometry.rotatedOffset(
+                    annotation.magnifierDestinationOffset,
                     clockwise: clockwise
                 )
             }

@@ -173,6 +173,7 @@ final class AppCoordinator: ObservableObject {
             let response = try await gyazoClient.upload(
                 GyazoUploadRequest(
                     pngData: png,
+                    fileName: ImageExportService.normalizedPNGFileName(model.fileName),
                     description: model.descriptionText,
                     collectionID: model.collectionID.isEmpty ? nil : model.collectionID,
                     accessPolicy: model.accessPolicy
@@ -208,11 +209,12 @@ final class AppCoordinator: ObservableObject {
         model.statusMessage = "編集後のPNGを作成しています…"
         do {
             let png = try renderPNG(from: model)
-            guard let destination = await selectSaveDestination() else {
+            guard let destination = await selectSaveDestination(suggestedFileName: model.fileName) else {
                 model.statusMessage = "保存をキャンセルしました。"
                 return
             }
             try png.write(to: destination, options: .atomic)
+            model.fileName = destination.lastPathComponent
             model.statusMessage = "保存しました: \(destination.lastPathComponent)"
         } catch {
             model.statusMessage = error.localizedDescription
@@ -227,15 +229,12 @@ final class AppCoordinator: ObservableObject {
         try ImageExportService.renderPNG(baseImage: model.baseImage, annotations: model.annotations)
     }
 
-    private func selectSaveDestination() async -> URL? {
+    private func selectSaveDestination(suggestedFileName: String) async -> URL? {
         await withCheckedContinuation { continuation in
-            let formatter = DateFormatter()
-            formatter.locale = Locale(identifier: "en_US_POSIX")
-            formatter.dateFormat = "yyyyMMdd_HHmmss"
             let panel = NSSavePanel()
             panel.allowedContentTypes = [UTType.png]
             panel.canCreateDirectories = true
-            panel.nameFieldStringValue = "capture_\(formatter.string(from: Date())).png"
+            panel.nameFieldStringValue = ImageExportService.normalizedPNGFileName(suggestedFileName)
             panel.begin { response in
                 continuation.resume(returning: response == .OK ? panel.url : nil)
             }

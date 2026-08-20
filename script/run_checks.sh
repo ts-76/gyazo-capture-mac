@@ -13,6 +13,7 @@ mkdir -p "$OUTPUT_DIR"
   "$PROJECT_ROOT/Sources/GyazoCapture/Models/AnnotationItem.swift" \
   "$PROJECT_ROOT/Sources/GyazoCapture/Models/AnnotationGeometry.swift" \
   "$PROJECT_ROOT/Sources/GyazoCapture/Support/AnnotationFrameTransformer.swift" \
+  "$PROJECT_ROOT/Sources/GyazoCapture/Support/MagnifierGeometry.swift" \
   "$PROJECT_ROOT/Sources/GyazoCapture/Models/CollectionPreset.swift" \
   "$PROJECT_ROOT/Sources/GyazoCapture/Models/GyazoModels.swift" \
   "$PROJECT_ROOT/Sources/GyazoCapture/Services/GyazoClient.swift" \
@@ -21,6 +22,7 @@ mkdir -p "$OUTPUT_DIR"
   "$PROJECT_ROOT/Sources/GyazoCapture/Services/ImageTransformService.swift" \
   "$PROJECT_ROOT/Sources/GyazoCapture/Services/MaskEffectRenderer.swift" \
   "$PROJECT_ROOT/Sources/GyazoCapture/Services/ImageCompositor.swift" \
+  "$PROJECT_ROOT/Sources/GyazoCapture/Services/ImageExportService.swift" \
   "$PROJECT_ROOT/Sources/GyazoCapture/Stores/SettingsStore.swift" \
   "$PROJECT_ROOT/Sources/GyazoCapture/Stores/EditorModel.swift" \
   "$PROJECT_ROOT/Checks/main.swift" \

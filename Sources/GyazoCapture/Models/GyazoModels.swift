@@ -52,6 +52,7 @@ enum GyazoAccessPolicy: String, CaseIterable, Identifiable {
 
 struct GyazoUploadRequest {
     let pngData: Data
+    let fileName: String
     let description: String
     let collectionID: String?
     let accessPolicy: GyazoAccessPolicy

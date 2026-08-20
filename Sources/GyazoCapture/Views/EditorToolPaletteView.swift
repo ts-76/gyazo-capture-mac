@@ -6,6 +6,7 @@ struct EditorToolPaletteView: View {
     private static let toolGroups: [[EditorTool]] = [
         [.select, .crop],
         [.rectangle, .ellipse, .line, .arrow],
+        [.magnifier],
         [.text, .highlight],
         [.redaction, .blur, .mosaic]
     ]

@@ -56,13 +56,13 @@ enum ImageTransformService {
             throw ImageTransformError.missingSourceCGImage
         }
 
-        let cgHeight = CGFloat(sourceCGImage.height)
-        let convertedRect = CGRect(
-            x: cropRect.minX,
-            y: cgHeight - cropRect.maxY,
-            width: cropRect.width,
-            height: cropRect.height
-        ).integral
+        let imageBounds = CGRect(
+            x: 0,
+            y: 0,
+            width: sourceCGImage.width,
+            height: sourceCGImage.height
+        )
+        let convertedRect = cropRect.integral.intersection(imageBounds)
         guard convertedRect.width >= 1, convertedRect.height >= 1 else {
             throw ImageTransformError.invalidCropRect
         }

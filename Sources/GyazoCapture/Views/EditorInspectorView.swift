@@ -1,3 +1,4 @@
+import Foundation
 import SwiftUI
 
 struct EditorInspectorView: View {
@@ -70,8 +71,31 @@ struct EditorInspectorView: View {
                             }
                             .controlSize(.small)
                         }
+                        if activeAnnotationKind == .magnifier {
+                            Picker("拡大倍率", selection: Binding(
+                                get: { model.currentMagnification },
+                                set: { model.applyMagnification($0) }
+                            )) {
+                                ForEach(EditorStylePresets.magnificationScales, id: \.self) { scale in
+                                    Text(String(format: "%.1f×", scale)).tag(scale)
+                                }
+                            }
+                            .pickerStyle(.segmented)
+
+                            Text("点線の円が元領域です。点線の円と拡大円はそれぞれドラッグして移動できます。")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
+            }
+
+            Section("出力") {
+                TextField("ファイル名", text: $model.fileName)
+                    .textFieldStyle(.roundedBorder)
+                Text("拡張子がない場合は .png を補います。ローカル保存とGyazo送信に使用します。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section("Gyazo") {

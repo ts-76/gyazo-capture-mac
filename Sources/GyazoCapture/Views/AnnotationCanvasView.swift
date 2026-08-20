@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-private enum AnnotationCanvasCoordinateSpace {
+enum AnnotationCanvasCoordinateSpace {
     static let name = "annotation-canvas"
 }
 
@@ -50,8 +50,17 @@ struct AnnotationCanvasView: View {
                 }
                 .allowsHitTesting(model.tool == .select)
 
-                ForEach(model.annotations.filter { !$0.kind.isMask }) { annotation in
+                ForEach(model.annotations.filter { !$0.kind.isMask && $0.kind != .magnifier }) { annotation in
                     AnnotationLayerView(
+                        model: model,
+                        annotationID: annotation.id,
+                        scale: scale
+                    )
+                }
+                .allowsHitTesting(model.tool == .select)
+
+                ForEach(model.annotations.filter { $0.kind == .magnifier }) { annotation in
+                    MagnifierAnnotationLayerView(
                         model: model,
                         annotationID: annotation.id,
                         scale: scale
@@ -128,6 +137,23 @@ struct AnnotationCanvasView: View {
                         frame = CGRect(x: start.x, y: start.y, width: 220, height: 48)
                     } else {
                         frame = rawFrame
+                    }
+                case .magnifier:
+                    if rawFrame.width < 40 || rawFrame.height < 40 {
+                        frame = CGRect(
+                            x: start.x,
+                            y: start.y,
+                            width: MagnifierGeometry.defaultSourceDiameter,
+                            height: MagnifierGeometry.defaultSourceDiameter
+                        )
+                    } else {
+                        let diameter = max(rawFrame.width, rawFrame.height)
+                        frame = CGRect(
+                            x: rawFrame.minX,
+                            y: rawFrame.minY,
+                            width: diameter,
+                            height: diameter
+                        )
                     }
                 case .blur, .mosaic, .redaction, .rectangle, .ellipse:
                     if rawFrame.width < 40 || rawFrame.height < 40 {
@@ -289,6 +315,8 @@ private struct AnnotationLayerView: View {
         case .redaction:
             Rectangle()
                 .fill(color)
+        case .magnifier:
+            EmptyView()
         case .blur, .mosaic:
             MaskEffectPreviewView(
                 baseImage: model.baseImage,

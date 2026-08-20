@@ -85,7 +85,7 @@ enum MaskEffectRenderer {
             }
             return output.cropped(to: source.extent)
 
-        case .rectangle, .text, .line, .arrow, .highlight, .ellipse, .redaction:
+        case .rectangle, .text, .line, .arrow, .highlight, .ellipse, .redaction, .magnifier:
             throw MaskEffectRendererError.unsupportedEffect
         }
     }

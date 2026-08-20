@@ -105,6 +105,17 @@ enum AnnotationFrameTransformer {
         )
     }
 
+    static func clippedFrameAfterCrop(_ frame: CGRect, cropRect: CGRect) -> CGRect? {
+        let intersection = frame.intersection(cropRect)
+        guard !intersection.isNull && intersection.width > 0 && intersection.height > 0 else { return nil }
+        return CGRect(
+            x: intersection.minX - cropRect.minX,
+            y: intersection.minY - cropRect.minY,
+            width: intersection.width,
+            height: intersection.height
+        )
+    }
+
     static func rotatedImageSize(afterRotating imageSize: CGSize) -> CGSize {
         CGSize(width: imageSize.height, height: imageSize.width)
     }

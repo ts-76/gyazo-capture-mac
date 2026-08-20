@@ -25,7 +25,7 @@ struct GyazoClient {
                 "collection_id": upload.collectionID ?? ""
             ],
             fileField: "imagedata",
-            filename: "capture.png",
+            filename: upload.fileName,
             mimeType: "image/png",
             fileData: upload.pngData
         )

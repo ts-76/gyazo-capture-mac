@@ -16,6 +16,34 @@ enum ImageExportError: LocalizedError {
 }
 
 enum ImageExportService {
+    static func defaultPNGFileName(date: Date = Date()) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyyMMdd_HHmmss"
+        return "capture_\(formatter.string(from: date)).png"
+    }
+
+    static func normalizedPNGFileName(_ proposedName: String) -> String {
+        let forbidden = CharacterSet.controlCharacters.union(
+            CharacterSet(charactersIn: "/:\\\"\n\r\t")
+        )
+        var name = proposedName
+            .components(separatedBy: forbidden)
+            .filter { !$0.isEmpty }
+            .joined(separator: "-")
+            .trimmingCharacters(in: CharacterSet(charactersIn: ". "))
+
+        if name.lowercased().hasSuffix(".png") {
+            name.removeLast(4)
+        }
+        name = String(name.prefix(120))
+            .trimmingCharacters(in: CharacterSet(charactersIn: ". "))
+        if name.isEmpty {
+            name = "capture"
+        }
+        return "\(name).png"
+    }
+
     static func renderPNG(baseImage: NSImage, annotations: [AnnotationItem]) throws -> Data {
         try ImageCompositor.pngData(baseImage: baseImage, annotations: annotations)
     }
